@@ -185,10 +185,26 @@ util::Status KernelRegisters::Write(uint64 offset, uint64 value) {
         static_cast<unsigned long long>(offset)));  // NOLINT(runtime/int)
   }
 
-  ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint64)));
-  *reinterpret_cast<uint64*>(mmap_register) = value;
+  ASSIGN_OR_RETURN(auto cached_mmap_register, GetMappedOffset(offset, sizeof(uint64)));
+  volatile char*  mmap_register = reinterpret_cast<volatile char*>(cached_mmap_register);
+  *reinterpret_cast<volatile uint32*>(mmap_register) = 0xFFFFFFFF & value;
+  *reinterpret_cast<volatile uint32*>(mmap_register+4) = value >> 32;
+  //*reinterpret_cast<uint64*>(mmap_register) = value;
+  //*reinterpret_cast<uint32*>(mmap_register) = 0xFFFFFFFF & value;
+  //*reinterpret_cast<uint32*>(mmap_register+4) = value >> 32;
   VLOG(5) << StringPrintf(
-      "Write: offset = 0x%016llx, value = 0x%016llx",
+      "Write 32 Hacks: offset = 0x%016llx, value = 0x%016llx mmap=%p",
+      static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(value),
+      mmap_register);  // NOLINT(runtime/int)
+
+  uint32 lower = *reinterpret_cast<volatile uint32*>(mmap_register);
+  uint32 upper = *reinterpret_cast<volatile uint32*>(mmap_register+4);
+  //uint32 lower = *reinterpret_cast<uint32*>(mmap_register);
+  //uint32 upper = *reinterpret_cast<uint32*>(mmap_register+4);
+  value = (static_cast<uint64>(upper) << 32) | lower;
+  VLOG(5) << StringPrintf(
+      "ReRead 32 Hacks: offset = 0x%016llx, value: = 0x%016llx",
       static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
       static_cast<unsigned long long>(value));  // NOLINT(runtime/int)
 
@@ -206,12 +222,65 @@ util::StatusOr<uint64> KernelRegisters::Read(uint64 offset) {
         static_cast<unsigned long long>(offset)));  // NOLINT(runtime/int)
   }
 
-  ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint64)));
-  uint64 value = *reinterpret_cast<uint64*>(mmap_register);
-  VLOG(5) << StringPrintf(
-      "Read: offset = 0x%016llx, value: = 0x%016llx",
+  //ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint64)));
+  ASSIGN_OR_RETURN(auto cached_mmap_register, GetMappedOffset(offset, sizeof(uint32)));
+  volatile char*  mmap_register = reinterpret_cast<volatile char*>(cached_mmap_register);
+  uint32 lower = *reinterpret_cast<volatile uint32*>(mmap_register);
+  uint32 upper = *reinterpret_cast<volatile uint32*>(mmap_register+4);
+  uint64 shifted_upper = static_cast<uint64>(upper) << 32;
+  uint64 value = shifted_upper | lower;
+  uint32 temp;
+  //for (int i = 0; i < 2; i++) {
+  //  temp = *reinterpret_cast<uint32*>(mmap_register + 4*i);
+  //  VLOG(5) << StringPrintf(
+  //    "Actual read Register (0x%08lx, %p): = 0x%016llx",
+  //    static_cast<unsigned long>(offset + 4*i), mmap_register + 4*i,  // NOLINT(runtime/int)
+  //    static_cast<unsigned long long>(temp));  // NOLINT(runtime/int)
+  //}
+    VLOG(5) << StringPrintf("Offset: 0x%016llx, mmap_reg: %p, Upper: 0x%016llx, Shifted upper: 0x%016llx, lower: 0x%016llx, value:0x%016llx",
       static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
+      mmap_register,  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(upper),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(shifted_upper),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(lower),  // NOLINT(runtime/int)
       static_cast<unsigned long long>(value));  // NOLINT(runtime/int)
+  //uint64 value = *reinterpret_cast<uint64*>(mmap_register);
+  //value &= 0x00000000FFFFFFFF;
+  //if (offset == 0x48578) {
+  //    VLOG(5) << "Hacked lower value for descrptior size";
+  //    value = lower;
+  //}
+  //ASSIGN_OR_RETURN(auto new_mmap_register, GetMappedOffset(0x048510, sizeof(uint32)));
+  //for (int i = 0; i < 8; i++) {
+  //  temp = *reinterpret_cast<uint32*>(new_mmap_register + 4*i);
+  //  VLOG(5) << StringPrintf(
+  //    "Register (0x%08lx): = 0x%016llx",
+  //    static_cast<unsigned long>(0x48510 + 4*i),  // NOLINT(runtime/int)
+  //    static_cast<unsigned long long>(temp));  // NOLINT(runtime/int)
+  //}
+  //ASSIGN_OR_RETURN(auto new_mmap_register, GetMappedOffset(0x048578, sizeof(uint32)));
+  //for (int i = 0; i < 8; i++) {
+  //  temp = *reinterpret_cast<uint32*>(new_mmap_register + 4*i);
+  //  VLOG(5) << StringPrintf(
+  //    "Register (0x%08lx, %p): = 0x%016llx",
+  //    static_cast<unsigned long>(0x48578 + 4*i), new_mmap_register + 4*i,  // NOLINT(runtime/int)
+  //    static_cast<unsigned long long>(temp));  // NOLINT(runtime/int)
+  //}
+  VLOG(5) << StringPrintf(
+      "Read 32 Hacks: offset = 0x%016llx, lower: = 0x%016llx upper: = 0x%016llx value: = 0x%016llx mmap: %p",
+      static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(lower),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(upper),  // NOLINT(runtime/int)
+      static_cast<unsigned long long>(value), mmap_register);  // NOLINT(runtime/int)
+
+  ASSIGN_OR_RETURN(cached_mmap_register, GetMappedOffset(0x048738, sizeof(uint32)));
+  mmap_register = reinterpret_cast<volatile char*>(cached_mmap_register);
+  lower = *reinterpret_cast<volatile uint32*>(mmap_register);
+  upper = *reinterpret_cast<volatile uint32*>(mmap_register+4);
+  shifted_upper = static_cast<uint64>(upper) << 32;
+  uint64 pfa = shifted_upper | lower;
+  VLOG(5) << StringPrintf("Page Fault Address: 0x%016llx",
+      static_cast<unsigned long long>(pfa));  // NOLINT(runtime/int)
 
   return value;
 }
@@ -230,8 +299,11 @@ util::Status KernelRegisters::Write32(uint64 offset, uint32 value) {
         static_cast<unsigned long long>(offset)));  // NOLINT(runtime/int)
   }
 
-  ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint32)));
-  *reinterpret_cast<uint32*>(mmap_register) = value;
+  ASSIGN_OR_RETURN(auto cached_mmap_register, GetMappedOffset(offset, sizeof(uint64)));
+  volatile char*  mmap_register = reinterpret_cast<volatile char*>(cached_mmap_register);
+  *reinterpret_cast<volatile uint32*>(mmap_register) = value;
+  //ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint32)));
+  //*reinterpret_cast<uint32*>(mmap_register) = value;
   VLOG(5) << StringPrintf(
       "Write: offset = 0x%016llx, value = 0x%08x",
       static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
@@ -251,8 +323,11 @@ util::StatusOr<uint32> KernelRegisters::Read32(uint64 offset) {
         static_cast<unsigned long long>(offset)));  // NOLINT(runtime/int)
   }
 
-  ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint32)));
-  uint32 value = *reinterpret_cast<uint32*>(mmap_register);
+  //ASSIGN_OR_RETURN(auto mmap_register, GetMappedOffset(offset, sizeof(uint32)));
+  //uint32 value = *reinterpret_cast<uint32*>(mmap_register);
+  ASSIGN_OR_RETURN(auto cached_mmap_register, GetMappedOffset(offset, sizeof(uint32)));
+  volatile char*  mmap_register = reinterpret_cast<volatile char*>(cached_mmap_register);
+  uint32 value = *reinterpret_cast<volatile uint32*>(mmap_register);
   VLOG(5) << StringPrintf(
       "Read: offset = 0x%016llx, value: = 0x%08x",
       static_cast<unsigned long long>(offset),  // NOLINT(runtime/int)
