@@ -435,7 +435,7 @@ util::StatusOr<MappedDeviceBuffer> MmioDriver::DoMapBuffer(
   if (buffer.IsValid()) {
     ASSIGN_OR_RETURN(auto device_buffer,
                      address_space_->MapMemory(buffer, direction,
-                                               MappingTypeHint::kExtended));
+                                               MappingTypeHint::kSimple));
     // TODO : this is dangerous: the std::bind captures a raw pointer to
     // the address space. This will break if executable registry outlives
     // address space in the driver. A better way is to at least use share_ptr

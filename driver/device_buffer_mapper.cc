@@ -106,7 +106,7 @@ util::StatusOr<DeviceBuffer> DeviceBufferMapper::Map(const Buffer& buffer,
                                                      DmaDirection direction) {
   TRACE_SCOPE("DeviceBufferMapper::Map");
   if (buffer.IsValid()) {
-    return address_space_->MapMemory(buffer, direction, MappingTypeHint::kAny);
+    return address_space_->MapMemory(buffer, direction, MappingTypeHint::kSimple);
   }
   return DeviceBuffer();  // Invalid buffer.
 }
