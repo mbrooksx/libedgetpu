@@ -1,4 +1,12 @@
-BUILDROOT ?= ..
+# Make uses /bin/sh by default, which is incompatible with the bashisms seen
+# below.
+SHELL := /bin/bash
+
+ifeq ($(origin MAKEFILE_DIR), undefined)
+	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+endif
+
+BUILDROOT ?= $(MAKEFILE_DIR)/..
 BUILDDIR := $(BUILDROOT)/out
 TOBUILDDIR = $(addprefix $(BUILDDIR)/,$(1))
 MKDIR = if [ ! -d $(dir $@) ]; then mkdir -p $(dir $@); fi
