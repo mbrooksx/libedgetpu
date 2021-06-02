@@ -45,12 +45,14 @@ LIBEDGETPU_FLATC_SRCS += $(BUILDROOT)/executable/executable.fbs
 LIBEDGETPU_FLATC_SRCS += $(BUILDROOT)/api/driver_options.fbs
 LIBEDGETPU_FLATC_OBJS := $(call TOBUILDDIR,$(patsubst %.fbs,%_generated.h,$(LIBEDGETPU_FLATC_SRCS)))
 
-LIBEDGETPU_FW_SRCS += $(BUILDROOT)/drivers/usb/apex_latest_single_ep.bin
-LIBEDGETPU_FW_SRCS += $(BUILDROOT)/drivers/usb/apex_latest_multi_ep.bin
-LIBEDGETPU_FW_OUTPUT = $(BUILDDIR)/drivers/usb/usb_latest_firmware.h
+LIBEDGETPU_FW_SRCS += $(BUILDROOT)/driver/usb/apex_latest_single_ep.bin
+LIBEDGETPU_FW_SRCS += $(BUILDROOT)/driver/usb/apex_latest_multi_ep.bin
+LIBEDGETPU_FW_OUTPUT = $(call TOBUILDDIR, $(BUILDROOT)/driver/usb/usb_latest_firmware.h)
 
 LIBEDGETPU_INCLUDES += $(BUILDROOT)
 LIBEDGETPU_INCLUDES += $(TFROOT)
+LIBEDGETPU_INCLUDES += $(BUILDDIR)
+LIBEDGETPU_INCLUDES += $(BUILDDIR)/$(BUILDROOT)
 LIBEDGETPU_INCLUDES := $(addprefix -I,$(LIBEDGETPU_INCLUDES))
 
 LIBEDGETPU_CSRCS += $(TFROOT)/tensorflow/lite/c/common.c
@@ -149,19 +151,19 @@ $(LIBEDGETPU_FLATC_OBJS) : $(BUILDDIR)/%_generated.h: %.fbs
 	@$(MKDIR)
 	@$(FLATC) --cpp --gen-object-api --force-empty --gen-mutable -o $(dir $@) $<
 
-# firmware:
-# 	@$(MKDIR) $(BUILDDIR)/driver/usb
-# 	echo "namespace {" > $(LIBEDGETPU_FW_OUTPUT)
-# 	for FILE in $(EDGETPU_FW_SRCS); do
-# 	  FILENAME=$${FILE##*/}
-# 	  FILEBASE=$${FILENAME%.*}
-# 	  echo "const unsigned char ""$$FILEBASE"" [] = {" >> $(LIBEDGETPU_FW_OUTPUT)
-# 	  xxd -i < "$$FILE" >> $(LIBEDGETPU_FW_OUTPUT)
-# 	  echo "};" >> $(LIBEDGETPU_FW_OUTPUT)
-# 	  echo "constexpr unsigned int ""$$FILEBASE""_len = sizeof(""$$FILEBASE"")/sizeof(unsigned char);" >> $(LIBEDGETPU_FW_OUTPUT)
-# 	  echo "" >> $(LIBEDGETPU_FW_OUTPUT)
-# 	done
-# 	echo "} // namespace" >> $(LIBEDGETPU_FW_OUTPUT)
+firmware:
+	mkdir -p $(dir $(LIBEDGETPU_FW_OUTPUT))
+	@echo "namespace {" > $(LIBEDGETPU_FW_OUTPUT)
+	for FILE in $(LIBEDGETPU_FW_SRCS); do \
+	  FILENAME=$${FILE##*/} ; \
+	  FILEBASE=$${FILENAME%.*} ; \
+	  echo "const unsigned char ""$$FILEBASE"" [] = {" >> $(LIBEDGETPU_FW_OUTPUT) ; \
+	  xxd -i < "$$FILE" >> $(LIBEDGETPU_FW_OUTPUT) ; \
+	  echo "};" >> $(LIBEDGETPU_FW_OUTPUT) ; \
+	  echo "constexpr unsigned int ""$$FILEBASE""_len = sizeof(""$$FILEBASE"")/sizeof(unsigned char);" >> $(LIBEDGETPU_FW_OUTPUT) ; \
+	  echo "" >> $(LIBEDGETPU_FW_OUTPUT) ; \
+	done
+	@echo "} // namespace" >> $(LIBEDGETPU_FW_OUTPUT)
 
 
 $(LIBEDGETPU_COBJS) : $(BUILDDIR)/%.o: %.c
@@ -174,7 +176,7 @@ $(LIBEDGETPU_CCOBJS) : $(BUILDDIR)/%.o: %.cc
 	@echo "Compiling $<"
 	@$(CXX) $(LIBEDGETPU_CXXFLAGS) $(LIBEDGETPU_INCLUDES) -c $< -MD -MT $@ -MF $(@:%o=%d) -o $@
 
-libedgetpu: $(LIBEDGETPU_FLATC_OBJS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS)
+libedgetpu: | firmware $(LIBEDGETPU_FLATC_OBJS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS)
 	@echo "Building libedgetpu.so"
 	@$(CXX) $(LIBEDGETPU_CCFLAGS) $(LIBEDGETPU_LDFLAGS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) -o $(BUILDDIR)/libedgetpu.so.1
 	@ln -sf $(BUILDDIR)/libedgetpu.so.1 $(BUILDDIR)/libedgetpu.so
