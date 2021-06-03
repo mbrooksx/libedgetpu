@@ -133,16 +133,24 @@ LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/custom_op_data.cc
 LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/custom_op_direct.cc
 LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/custom_op_user_data_direct.cc
 LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/edgetpu_c.cc
-LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/edgetpu_context_direct.cc
 LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/edgetpu_delegate_for_custom_op.cc
 LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/edgetpu_delegate_for_custom_op_tflite_plugin.cc
-LIBEDGETPU_CCSRCS += $(BUILDROOT)/tflite/edgetpu_manager_direct.cc
 LIBEDGETPU_CCSRCS += $(TFROOT)/tensorflow/lite/util.cc
 LIBEDGETPU_CCOBJS := $(call TOBUILDDIR,$(patsubst %.cc,%.o,$(LIBEDGETPU_CCSRCS)))
 
+# In order to support direct and throttled mode - we need to compile two files
+# twice (changing -DTHROTTLE_EDGE_TPU).
+LIBEDGETPU_MAX_CCSRCS += $(BUILDROOT)/tflite/edgetpu_context_direct.cc
+LIBEDGETPU_MAX_CCSRCS += $(BUILDROOT)/tflite/edgetpu_manager_direct.cc
+LIBEDGETPU_MAX_CCOBJS := $(call TOBUILDDIR,$(patsubst %.cc,%.o,$(LIBEDGETPU_MAX_CCSRCS)))
+
+LIBEDGETPU_STD_CCSRCS += $(BUILDROOT)/tflite/edgetpu_context_direct.cc
+LIBEDGETPU_STD_CCSRCS += $(BUILDROOT)/tflite/edgetpu_manager_direct.cc
+LIBEDGETPU_STD_CCOBJS := $(call TOBUILDDIR,$(patsubst %.cc,%-throttled.o,$(LIBEDGETPU_STD_CCSRCS)))
+
 .PHONY: libedgetpu
 
-all: libedgetpu
+all: libedgetpu libedgetpu-throttled
 
 clean:
 	rm -rf $(BUILDDIR)
@@ -176,8 +184,25 @@ $(LIBEDGETPU_CCOBJS) : $(BUILDDIR)/%.o: %.cc
 	@echo "Compiling $<"
 	@$(CXX) $(LIBEDGETPU_CXXFLAGS) $(LIBEDGETPU_INCLUDES) -c $< -MD -MT $@ -MF $(@:%o=%d) -o $@
 
-libedgetpu: | firmware $(LIBEDGETPU_FLATC_OBJS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS)
+$(LIBEDGETPU_MAX_CCOBJS) : $(BUILDDIR)/%.o: %.cc
+	@$(MKDIR)
+	@echo "Compiling $<"
+	@$(CXX) $(LIBEDGETPU_CXXFLAGS) $(LIBEDGETPU_INCLUDES) -c $< -MD -MT $@ -MF $(@:%o=%d) -o $@
+
+$(LIBEDGETPU_STD_CCOBJS) : $(BUILDDIR)/%-throttled.o: %.cc
+	@$(MKDIR)
+	@echo "Compiling $<"
+	@$(CXX) -DTHROTTLE_EDGE_TPU $(LIBEDGETPU_CXXFLAGS) $(LIBEDGETPU_INCLUDES) -c $< -MD -MT $@ -MF $(@:%o=%d) -o $@
+
+libedgetpu: | firmware $(LIBEDGETPU_FLATC_OBJS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) $(LIBEDGETPU_MAX_CCOBJS)
+	@mkdir $(BUILDDIR)/direct
 	@echo "Building libedgetpu.so"
-	@$(CXX) $(LIBEDGETPU_CCFLAGS) $(LIBEDGETPU_LDFLAGS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) -o $(BUILDDIR)/libedgetpu.so.1
-	@ln -sf $(BUILDDIR)/libedgetpu.so.1 $(BUILDDIR)/libedgetpu.so
+	@$(CXX) $(LIBEDGETPU_CCFLAGS) $(LIBEDGETPU_LDFLAGS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) $(LIBEDGETPU_MAX_CCOBJS) -o $(BUILDDIR)/direct/libedgetpu.so.1
+	@ln -sf $(BUILDDIR)/direct/libedgetpu.so.1 $(BUILDDIR)/direct/libedgetpu.so
+
+libedgetpu-throttled: | firmware $(LIBEDGETPU_FLATC_OBJS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) $(LIBEDGETPU_STD_CCOBJS)
+	@mkdir $(BUILDDIR)/throttled
+	@echo "Building throttled libedgetpu.so"
+	@$(CXX) $(LIBEDGETPU_CCFLAGS) $(LIBEDGETPU_LDFLAGS) $(LIBEDGETPU_COBJS) $(LIBEDGETPU_CCOBJS) $(LIBEDGETPU_STD_CCOBJS) -o $(BUILDDIR)/throttled/libedgetpu.so.1
+	@ln -sf $(BUILDDIR)/throttled/libedgetpu.so.1 $(BUILDDIR)/throttled/libedgetpu.so
 
